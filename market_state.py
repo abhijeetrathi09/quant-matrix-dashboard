@@ -100,7 +100,6 @@ if not st.session_state.history_loaded:
 
 if not st.session_state.history_loaded:
     st.title("🧠 Institutional Quant Matrix")
-    if st.button("Initialize Quant Engine", type="primary"):
         fyers = data_engine.get_fyers_client()
         if fyers:
             bar = st.progress(0, "Loading institutional data...")
