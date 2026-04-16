@@ -1,0 +1,6 @@
+streamlit
+pandas
+numpy
+requests
+fyers-apiv3
+pandas_ta
