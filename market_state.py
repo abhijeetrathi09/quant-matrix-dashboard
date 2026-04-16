@@ -63,7 +63,7 @@ def draw_metric(title, subtitle, value, color_override=None):
     st.markdown(html, unsafe_allow_html=True)
     st.progress(int(value) / 100 if value <= 100 else 1.0)
 
-# --- INITIALIZATION & MEMORY ---
+# --- INITIALIZATION & MEMORY (DEBUG UPGRADED) ---
 if 'history_loaded' not in st.session_state:
     st.session_state.history_loaded = False
     st.session_state.base_data = {}
@@ -71,16 +71,11 @@ if 'history_loaded' not in st.session_state:
 if not st.session_state.history_loaded:
     st.title("🧠 Institutional Quant Matrix")
     if st.button("Initialize Quant Engine", type="primary"):
-        
-        # 1. Force the UI to show it's trying
         st.info("⏳ Connecting to Fyers API...") 
-        
         try:
             fyers = data_engine.get_fyers_client()
-            
-            # 2. If Fyers successfully connects
             if fyers:
-                st.success("✅ Fyers Connected!")
+                st.success("✅ Fyers Connected! Loading Data...")
                 bar = st.progress(0, "Loading institutional data...")
                 for i, sym in enumerate(config.NIFTY_SYMBOLS):
                     df = data_engine.fetch_historical_data(fyers, sym, days=5)
@@ -89,27 +84,10 @@ if not st.session_state.history_loaded:
                     bar.progress((i + 1) / len(config.NIFTY_SYMBOLS))
                 st.session_state.history_loaded = True
                 st.rerun()
-                
-            # 3. If Fyers silently fails and returns None
             else:
-                st.error("❌ Fyers refused connection. Your get_fyers_client() returned 'None'. Check your API keys or saved token file!")
-                
-        # 4. If Fyers crashes the script entirely
+                st.error("❌ Fyers refused connection. Your get_fyers_client() returned 'None'. Check your API keys or Streamlit Secrets!")
         except Exception as e:
             st.error(f"🚨 CRASH inside data_engine.py: {e}")
-
-if not st.session_state.history_loaded:
-    st.title("🧠 Institutional Quant Matrix")
-        fyers = data_engine.get_fyers_client()
-        if fyers:
-            bar = st.progress(0, "Loading institutional data...")
-            for i, sym in enumerate(config.NIFTY_SYMBOLS):
-                df = data_engine.fetch_historical_data(fyers, sym, days=5)
-                if df is not None and not df.empty:
-                    st.session_state.base_data[sym] = math_engine.calculate_indicators(df)
-                bar.progress((i + 1) / len(config.NIFTY_SYMBOLS))
-            st.session_state.history_loaded = True
-            st.rerun()
 
 # --- LIVE ENGINE LOOP ---
 if st.session_state.history_loaded:
@@ -238,10 +216,8 @@ if st.session_state.history_loaded:
                 
             st.session_state.last_export_minute = current_minute
 
-        # Auto-refresh loop (Runs only when market is open)
         time.sleep(2)
         st.rerun()
     else:
-        # Market is closed. Stop the loop and freeze the UI.
         st.warning("⏸️ **Market is Closed.** Engine and data export are paused until 09:15 AM. Refresh the page to restart.")
         st.stop()
