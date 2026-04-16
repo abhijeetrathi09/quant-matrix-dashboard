@@ -7,6 +7,30 @@ import config
 import os
 
 def get_fyers_client():
+
+    import streamlit as st
+from fyers_apiv3 import fyersModel
+
+def get_fyers_client():
+    try:
+        # Check if we are running in the cloud by looking for st.secrets
+        if "fyers" in st.secrets:
+            client_id = st.secrets["fyers"]["client_id"]
+            access_token = st.secrets["fyers"]["access_token"]
+            
+            # Initialize directly using the secure vault token!
+            fyers = fyersModel.FyersModel(
+                client_id=client_id, 
+                is_async=False, 
+                token=access_token, 
+                log_path=""
+            )
+            return fyers
+            
+    except Exception as e:
+        print(f"Cloud vault failed, falling back to local... Error: {e}")
+        
+    # ... (Keep your original local browser login code down here as a backup) ...
     """Reads the daily VIP token from file and connects to Fyers."""
     if not os.path.exists("access_token.txt"):
         print("❌ Error: access_token.txt not found. Run setup_token.py first!")
