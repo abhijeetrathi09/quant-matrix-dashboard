@@ -22,6 +22,7 @@ st.markdown("""
     .value-text { font-size: 26px; font-weight: 800; margin: 0; line-height: 1.1;}
     .status-text { font-size: 15px; font-weight: 800; margin-top: 5px; text-transform: uppercase; }
     .block-container { padding-top: 1.5rem; }
+    header { visibility: hidden; }
     </style>
 """, unsafe_allow_html=True)
 
