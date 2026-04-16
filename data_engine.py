@@ -6,19 +6,17 @@ import datetime
 import config
 import os
 
-def get_fyers_client():
-
-    import streamlit as st
+import streamlit as st
 from fyers_apiv3 import fyersModel
 
 def get_fyers_client():
     try:
-        # Check if we are running in the cloud by looking for st.secrets
+        # Step 1: Check if we are running in the cloud and have access to the Secure Vault
         if "fyers" in st.secrets:
             client_id = st.secrets["fyers"]["client_id"]
             access_token = st.secrets["fyers"]["access_token"]
             
-            # Initialize directly using the secure vault token!
+            # Step 2: Log in directly using the vault keys (No browser needed!)
             fyers = fyersModel.FyersModel(
                 client_id=client_id, 
                 is_async=False, 
@@ -26,20 +24,15 @@ def get_fyers_client():
                 log_path=""
             )
             return fyers
+        else:
+            print("No Streamlit Secrets found. Falling back to local auth...")
+            return None # (Or keep your original local login code here)
             
     except Exception as e:
-        print(f"Cloud vault failed, falling back to local... Error: {e}")
-        
-    # ... (Keep your original local browser login code down here as a backup) ...
-    """Reads the daily VIP token from file and connects to Fyers."""
-    if not os.path.exists("access_token.txt"):
-        print("❌ Error: access_token.txt not found. Run setup_token.py first!")
+        print(f"Authentication Error: {e}")
         return None
-        
-    with open("access_token.txt", "r") as f:
-        access_token = f.read().strip()
-        
-    return fyersModel.FyersModel(client_id=config.CLIENT_ID, is_async=False, token=access_token, log_path="")
+
+# ... (Keep your fetch_historical_data function below this completely untouched!) ...
 
 def fetch_historical_data(fyers, symbol, days=5):
     """Fetches 5-minute candles for a specific stock."""
