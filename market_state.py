@@ -51,127 +51,175 @@ def load_stock_weights():
         return None 
 
 # --- UI HELPER ---
-def draw_metric(title, subtitle, value, color_override=None):
+def draw_metric(title, subtitle, value, color_override=None, is_pct=True):
     color = color_override if color_override else (COLOR_BULL if value > 55 else COLOR_BEAR if value < 45 else COLOR_NEUT)
+    display_val = f"{value:.1f}" if isinstance(value, (int, float)) and is_pct else f"{value}"
     html = f"""
     <div class="metric-box" style="border-color: {color};">
         <div class="title-text">{title}</div>
         <div class="subtitle-text">{subtitle}</div>
-        <div class="value-text">{value:.1f}</div>
+        <div class="value-text">{display_val}</div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
-    st.progress(int(value) / 100 if value <= 100 else 1.0)
+    if is_pct and isinstance(value, (int, float)):
+        st.progress(int(value) / 100 if value <= 100 else 1.0)
 
-# --- INITIALIZATION & MEMORY (DEBUG UPGRADED) ---
+# --- INITIALIZATION & MEMORY ---
 if 'history_loaded' not in st.session_state:
     st.session_state.history_loaded = False
     st.session_state.base_data = {}
 
 if not st.session_state.history_loaded:
-    st.title("🧠 Institutional Quant Matrix")
+    st.title("🧠 Institutional Quant Terminal")
     if st.button("Initialize Quant Engine", type="primary"):
-        st.info("⏳ Connecting to Fyers API...") 
+        st.info("⏳ Connecting to Fyers Vault & Loading Equities...") 
         try:
             fyers = data_engine.get_fyers_client()
             if fyers:
-                st.success("✅ Fyers Connected! Loading Data...")
-                bar = st.progress(0, "Loading institutional data...")
+                st.success("✅ Fyers Connected!")
+                bar = st.progress(0, "Crunching institutional data...")
                 for i, sym in enumerate(config.NIFTY_SYMBOLS):
                     df = data_engine.fetch_historical_data(fyers, sym, days=5)
                     if df is not None and not df.empty:
                         st.session_state.base_data[sym] = math_engine.calculate_indicators(df)
                     bar.progress((i + 1) / len(config.NIFTY_SYMBOLS))
                 st.session_state.history_loaded = True
+                st.session_state.fyers_client = fyers # Save connection for live loop
                 st.rerun()
             else:
-                st.error("❌ Fyers refused connection. Your get_fyers_client() returned 'None'. Check your API keys or Streamlit Secrets!")
+                st.error("❌ Fyers refused connection. Check your Streamlit Secrets vault!")
         except Exception as e:
             st.error(f"🚨 CRASH inside data_engine.py: {e}")
 
 # --- LIVE ENGINE LOOP ---
 if st.session_state.history_loaded:
-    live_data = {}
-    if os.path.exists("live_prices.json"):
-        try:
-            with open("live_prices.json", "r") as f: live_data = json.load(f)
-        except: pass
-
-    weights = load_stock_weights()
-    above_vwap_wt = below_vwap_wt = above_20_ema_wt = 0.0
-    macd_bull_wt = rsi_hot_wt = rsi_cold_wt = 0.0
-    adv_wt = dec_wt = vol_strong_wt = atr_expand_wt = 0.0
-    total_valid_weight = 0.0 
+    fyers = st.session_state.get('fyers_client', None)
     
-    for sym, df in st.session_state.base_data.items():
-        if len(df) < 2: continue
-        w = weights.get(sym, 0.0) if weights else 1.0 
-        total_valid_weight += w
-        
-        last, prev = df.iloc[-1], df.iloc[-2]
-        current_price = live_data.get(sym, last['close'])
-        
-        if current_price > last['VWAP']: above_vwap_wt += w
-        else: below_vwap_wt += w
-        if current_price > last['EMA_20']: above_20_ema_wt += w
-        if last['MACD_Line'] > last['MACD_Signal']: macd_bull_wt += w
-        if last['RSI'] > 60: rsi_hot_wt += w
-        elif last['RSI'] < 40: rsi_cold_wt += w
-        if current_price > prev['close']: adv_wt += w
-        elif current_price < prev['close']: dec_wt += w
-        if last['volume'] > last['Volume_Avg_20']: vol_strong_wt += w
-        if last['ATR_Expanding']: atr_expand_wt += w
-
-    pct_vwap = (above_vwap_wt / total_valid_weight) * 100
-    pct_ema = (above_20_ema_wt / total_valid_weight) * 100
-    pct_macd = (macd_bull_wt / total_valid_weight) * 100
-    pct_rsi_hot = (rsi_hot_wt / total_valid_weight) * 100
-    pct_rsi_cold = (rsi_cold_wt / total_valid_weight) * 100
-    pct_vol = (vol_strong_wt / total_valid_weight) * 100
-    pct_atr = (atr_expand_wt / total_valid_weight) * 100
-    total_ad_wt = adv_wt + dec_wt
-    pct_ad = (adv_wt / total_ad_wt * 100) if total_ad_wt > 0 else 50.0
-
-    S, M, P, V, master_score = logic_engine.calculate_core_scores(
-        pct_vwap, pct_ema, pct_macd, pct_rsi_hot, pct_rsi_cold, pct_ad, pct_vol, pct_atr
-    )
-    summary_template, m_score, bias, conf, mode = logic_engine.generate_summary(S, M, P, V, master_score)
+    # --- TABS SETUP ---
+    tab_equity, tab_options = st.tabs(["🧠 EQUITY MATRIX", "⛓️ OPTIONS INTELLIGENCE"])
 
     # ==========================================
-    #       THE 4x2 GRID UI RENDERING
+    #       TAB 1: EQUITY MATRIX
     # ==========================================
+    with tab_equity:
+        live_data = {}
+        if os.path.exists("live_prices.json"):
+            try:
+                with open("live_prices.json", "r") as f: live_data = json.load(f)
+            except: pass
 
-    top_left, top_right = st.columns([1.5, 1])
-    with top_left:
-        st.markdown("<h2 style='margin-top: 0; padding-top: 0;'>🧠 Institutional Quant Matrix</h2>", unsafe_allow_html=True)
-        st.info(summary_template)
+        weights = load_stock_weights()
+        above_vwap_wt = below_vwap_wt = above_20_ema_wt = 0.0
+        macd_bull_wt = rsi_hot_wt = rsi_cold_wt = 0.0
+        adv_wt = dec_wt = vol_strong_wt = atr_expand_wt = 0.0
+        total_valid_weight = 0.0 
         
-    with top_right:
-        comp_color = COLOR_BULL if m_score > 60 else COLOR_BEAR if m_score < 40 else COLOR_NEUT
-        st.markdown(f"""
-        <div class="metric-box" style="border-color: {comp_color}; padding: 18px;">
-            <div class="title-text" style="font-size: 14px;">🧠 Master Engine Score</div>
-            <div class="subtitle-text">Bias: {bias} | Conf: {conf}</div>
-            <div class="value-text" style="font-size: 50px;">{m_score:.1f}</div>
-            <div class="status-text" style="color: {comp_color};">{mode}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        for sym, df in st.session_state.base_data.items():
+            if len(df) < 2: continue
+            w = weights.get(sym, 0.0) if weights else 1.0 
+            total_valid_weight += w
+            
+            last, prev = df.iloc[-1], df.iloc[-2]
+            current_price = live_data.get(sym, last['close'])
+            
+            if current_price > last['VWAP']: above_vwap_wt += w
+            else: below_vwap_wt += w
+            if current_price > last['EMA_20']: above_20_ema_wt += w
+            if last['MACD_Line'] > last['MACD_Signal']: macd_bull_wt += w
+            if last['RSI'] > 60: rsi_hot_wt += w
+            elif last['RSI'] < 40: rsi_cold_wt += w
+            if current_price > prev['close']: adv_wt += w
+            elif current_price < prev['close']: dec_wt += w
+            if last['volume'] > last['Volume_Avg_20']: vol_strong_wt += w
+            if last['ATR_Expanding']: atr_expand_wt += w
 
-    st.markdown("<br>", unsafe_allow_html=True)
+        pct_vwap = (above_vwap_wt / total_valid_weight) * 100
+        pct_ema = (above_20_ema_wt / total_valid_weight) * 100
+        pct_macd = (macd_bull_wt / total_valid_weight) * 100
+        pct_rsi_hot = (rsi_hot_wt / total_valid_weight) * 100
+        pct_rsi_cold = (rsi_cold_wt / total_valid_weight) * 100
+        pct_vol = (vol_strong_wt / total_valid_weight) * 100
+        pct_atr = (atr_expand_wt / total_valid_weight) * 100
+        total_ad_wt = adv_wt + dec_wt
+        pct_ad = (adv_wt / total_ad_wt * 100) if total_ad_wt > 0 else 50.0
 
-    r2_1, r2_2, r2_3, r2_4 = st.columns(4)
-    with r2_1: draw_metric("🟢 STR: Trend Convict", f"> 20 EMA ({pct_ema:.1f}%)", pct_ema)
-    with r2_2: draw_metric("🟡 PART: VWAP Control", f"Intraday ({pct_vwap:.1f}%)", pct_vwap)
-    with r2_3: draw_metric("🟡 PART: A/D Strength", f"Adv/Dec ({pct_ad:.1f}%)", pct_ad)
-    with r2_4: draw_metric("🟡 PART: Vol Confirm", f"Vol Surges ({pct_vol:.1f}%)", pct_vol)
+        S, M, P, V, master_score = logic_engine.calculate_core_scores(
+            pct_vwap, pct_ema, pct_macd, pct_rsi_hot, pct_rsi_cold, pct_ad, pct_vol, pct_atr
+        )
+        summary_template, m_score, bias, conf, mode = logic_engine.generate_summary(S, M, P, V, master_score)
 
-    r3_1, r3_2, r3_3, r3_4 = st.columns(4)
-    with r3_1: draw_metric("🔵 MOM: MACD Bullish", f"Breadth ({pct_macd:.1f}%)", pct_macd)
-    with r3_2: draw_metric("🔵 MOM: RSI > 60", f"Hot Weight ({pct_rsi_hot:.1f}%)", pct_rsi_hot, COLOR_BULL)
-    with r3_3: draw_metric("🔵 MOM: RSI < 40", f"Cold Weight ({pct_rsi_cold:.1f}%)", pct_rsi_cold, COLOR_BEAR)
-    with r3_4: 
-        v_color = COLOR_BEAR if V > 60 else COLOR_BULL if V < 40 else COLOR_NEUT
-        draw_metric("🔴 VOL: ATR Expand", f"Range Expansion ({V:.1f}%)", V, v_color)
+        top_left, top_right = st.columns([1.5, 1])
+        with top_left:
+            st.markdown("<h2 style='margin-top: 0; padding-top: 0;'>🧠 Institutional Equity Matrix</h2>", unsafe_allow_html=True)
+            st.info(summary_template)
+            
+        with top_right:
+            comp_color = COLOR_BULL if m_score > 60 else COLOR_BEAR if m_score < 40 else COLOR_NEUT
+            st.markdown(f"""
+            <div class="metric-box" style="border-color: {comp_color}; padding: 18px;">
+                <div class="title-text" style="font-size: 14px;">🧠 Master Engine Score</div>
+                <div class="subtitle-text">Bias: {bias} | Conf: {conf}</div>
+                <div class="value-text" style="font-size: 50px;">{m_score:.1f}</div>
+                <div class="status-text" style="color: {comp_color};">{mode}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        r2_1, r2_2, r2_3, r2_4 = st.columns(4)
+        with r2_1: draw_metric("🟢 STR: Trend Convict", f"> 20 EMA ({pct_ema:.1f}%)", pct_ema)
+        with r2_2: draw_metric("🟡 PART: VWAP Control", f"Intraday ({pct_vwap:.1f}%)", pct_vwap)
+        with r2_3: draw_metric("🟡 PART: A/D Strength", f"Adv/Dec ({pct_ad:.1f}%)", pct_ad)
+        with r2_4: draw_metric("🟡 PART: Vol Confirm", f"Vol Surges ({pct_vol:.1f}%)", pct_vol)
+
+        r3_1, r3_2, r3_3, r3_4 = st.columns(4)
+        with r3_1: draw_metric("🔵 MOM: MACD Bullish", f"Breadth ({pct_macd:.1f}%)", pct_macd)
+        with r3_2: draw_metric("🔵 MOM: RSI > 60", f"Hot Weight ({pct_rsi_hot:.1f}%)", pct_rsi_hot, COLOR_BULL)
+        with r3_3: draw_metric("🔵 MOM: RSI < 40", f"Cold Weight ({pct_rsi_cold:.1f}%)", pct_rsi_cold, COLOR_BEAR)
+        with r3_4: 
+            v_color = COLOR_BEAR if V > 60 else COLOR_BULL if V < 40 else COLOR_NEUT
+            draw_metric("🔴 VOL: ATR Expand", f"Range Expansion ({V:.1f}%)", V, v_color)
+
+    # ==========================================
+    #       TAB 2: OPTIONS INTELLIGENCE
+    # ==========================================
+    with tab_options:
+        if fyers:
+            intel = data_engine.fetch_options_intelligence(fyers)
+        else:
+            intel = {"spot_price": 0, "true_pcr": 1.0, "pcr_state": "Offline", "buildup": "Offline", "trap_signal": "Offline", "resistance": 0, "support": 0}
+
+        st.markdown(f"### 🧠 Risk-Adjusted Positioning Engine (Spot: {intel['spot_price']})")
+        
+        if "🚨" in intel['trap_signal']:
+            st.error(f"**DANGER:** {intel['trap_signal']}")
+        else:
+            st.success(f"**STATUS:** {intel['trap_signal']}")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        o1, o2, o3, o4 = st.columns(4)
+        
+        with o1:
+            pcr_color = COLOR_BEAR if intel['true_pcr'] < 0.9 or intel['true_pcr'] > 1.3 else COLOR_BULL if intel['true_pcr'] > 1.1 else COLOR_NEUT
+            draw_metric("📊 TRUE PCR (Δ)", intel['pcr_state'], intel['true_pcr'], pcr_color, is_pct=False)
+            
+        with o2:
+            build_color = COLOR_BULL if "LONG BUILDUP" in intel['buildup'] else COLOR_BEAR if "SHORT BUILDUP" in intel['buildup'] else COLOR_NEUT
+            st.markdown(f"""
+            <div class="metric-box" style="border-color: {build_color};">
+                <div class="title-text">SMART MONEY FLOW</div>
+                <div class="subtitle-text">Price + Weighted OI Chg</div>
+                <div class="status-text" style="color: {build_color}; font-size: 18px;">{intel['buildup']}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with o3:
+            draw_metric("🛑 RESISTANCE", "Max Call OI (Active Zone)", intel['resistance'], COLOR_BEAR, is_pct=False)
+            
+        with o4:
+            draw_metric("🟢 SUPPORT", "Max Put OI (Active Zone)", intel['support'], COLOR_BULL, is_pct=False)
 
     # ==========================================
     #       MARKET HOURS & DATA EXPORTER
@@ -179,7 +227,7 @@ if st.session_state.history_loaded:
     now = datetime.now()
     current_time_only = now.time()
     
-    # Define Market Hours
+    # 09:15 AM to 03:30 PM
     market_start = dt_time(9, 15)
     market_end = dt_time(15, 30)
     is_market_open = (market_start <= current_time_only <= market_end)
