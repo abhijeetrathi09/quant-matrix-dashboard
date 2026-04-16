@@ -16,15 +16,21 @@ st.set_page_config(page_title="Prop Desk Engine", layout="wide")
 # --- AUTO-ADAPTING GRID CSS ---
 st.markdown("""
     <style>
+    /* 1. Hide the default Streamlit top header menu */
+    [data-testid="stHeader"] { visibility: hidden; }
+    
+    /* 2. Push the entire dashboard down slightly so it's not glued to the roof */
+    .block-container { padding-top: 3rem; padding-bottom: 1rem; }
+    
+    /* 3. Your existing Grid CSS */
     .metric-box { padding: 15px; border-radius: 8px; background-color: rgba(128, 128, 128, 0.1); margin-bottom: 10px; border-left: 5px solid; height: 95%; }
     .title-text { font-size: 12px; color: #888; text-transform: uppercase; font-weight: 800; margin-bottom: 4px; letter-spacing: 0.5px;}
     .subtitle-text { font-size: 11px; color: #777; margin-bottom: 8px;}
     .value-text { font-size: 26px; font-weight: 800; margin: 0; line-height: 1.1;}
     .status-text { font-size: 15px; font-weight: 800; margin-top: 5px; text-transform: uppercase; }
-    .block-container { padding-top: 1.5rem; }
-    header { visibility: hidden; }
     </style>
 """, unsafe_allow_html=True)
+
 
 # --- STRICT DATA COLORS ---
 COLOR_BULL = "#00C805" 
