@@ -129,13 +129,19 @@ if st.session_state.history_loaded:
         if last['volume'] > last['Volume_Avg_20']: vol_strong_wt += w
         if last['ATR_Expanding']: atr_expand_wt += w
 
-    pct_vwap = (above_vwap_wt / total_valid_weight) * 100
-    pct_ema = (above_20_ema_wt / total_valid_weight) * 100
-    pct_macd = (macd_bull_wt / total_valid_weight) * 100
-    pct_rsi_hot = (rsi_hot_wt / total_valid_weight) * 100
-    pct_rsi_cold = (rsi_cold_wt / total_valid_weight) * 100
-    pct_vol = (vol_strong_wt / total_valid_weight) * 100
-    pct_atr = (atr_expand_wt / total_valid_weight) * 100
+    # --- SAFETY NET: Prevent Divide-by-Zero Crash ---
+    if total_valid_weight > 0:
+        pct_vwap = (above_vwap_wt / total_valid_weight) * 100
+        pct_ema = (above_20_ema_wt / total_valid_weight) * 100
+        pct_macd = (macd_bull_wt / total_valid_weight) * 100
+        pct_rsi_hot = (rsi_hot_wt / total_valid_weight) * 100
+        pct_rsi_cold = (rsi_cold_wt / total_valid_weight) * 100
+        pct_vol = (vol_strong_wt / total_valid_weight) * 100
+        pct_atr = (atr_expand_wt / total_valid_weight) * 100
+    else:
+        st.error("⚠️ DATA ERROR: Fyers connected, but returned 0 rows of data. Check your token permissions or market hours.")
+        pct_vwap = pct_ema = pct_macd = pct_rsi_hot = pct_rsi_cold = pct_vol = pct_atr = 0.0
+
     total_ad_wt = adv_wt + dec_wt
     pct_ad = (adv_wt / total_ad_wt * 100) if total_ad_wt > 0 else 50.0
 
