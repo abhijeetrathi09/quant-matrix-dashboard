@@ -5,7 +5,7 @@ import json
 import time
 import os
 import pandas as pd
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, timezone, timedelta
 import config
 import data_engine
 import math_engine
@@ -182,10 +182,13 @@ if st.session_state.history_loaded:
         v_color = COLOR_BEAR if V > 60 else COLOR_BULL if V < 40 else COLOR_NEUT
         draw_metric("🔴 VOL: ATR Expand", f"Range Expansion ({V:.1f}%)", V, v_color)
 
+
     # ==========================================
     #       MARKET HOURS & DATA EXPORTER
     # ==========================================
-    now = datetime.now()
+    # Force the Cloud Server to always use Indian Standard Time (UTC + 5:30)
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
+    now = datetime.now(ist_tz)
     current_time_only = now.time()
     
     market_start = dt_time(9, 15)
