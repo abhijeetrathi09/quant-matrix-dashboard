@@ -99,10 +99,30 @@ if not st.session_state.history_loaded:
 # --- LIVE ENGINE LOOP ---
 if st.session_state.history_loaded:
     live_data = {}
-    if os.path.exists("live_prices.json"):
+    fyers = st.session_state.get('fyers_client', None)
+    
+    # 1. Try to fetch LIVE quotes directly from Fyers (For the Cloud)
+    if fyers:
+        try:
+            # Ask Fyers for the live price of all 50 stocks at once
+            symbol_string = ",".join(config.NIFTY_SYMBOLS)
+            quote_req = {"symbols": symbol_string}
+            response = fyers.quotes(data=quote_req)
+            
+            if 'd' in response:
+                for item in response['d']:
+                    sym = item['n']  # The symbol name (e.g., "NSE:RELIANCE-EQ")
+                    live_price = item['v']['lp']  # The Last Traded Price
+                    live_data[sym] = live_price
+        except Exception as e:
+            pass # Fail silently and fall back to historical close if Fyers hiccups
+            
+    # 2. Fallback to local JSON ONLY if API fails (For your local laptop setup)
+    if not live_data and os.path.exists("live_prices.json"):
         try:
             with open("live_prices.json", "r") as f: live_data = json.load(f)
         except: pass
+            
 
     weights = load_stock_weights()
     above_vwap_wt = below_vwap_wt = above_20_ema_wt = 0.0
